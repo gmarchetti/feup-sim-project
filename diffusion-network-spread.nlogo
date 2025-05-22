@@ -1,38 +1,74 @@
-turtles-own
+breed [users user]
+breed [news-sources news-source]
+
+users-own
 [
+  susceptible?
   infected?           ;; if true, the turtle is infectious
   resistant?          ;; if true, the turtle can't be infected
   virus-check-timer   ;; number of ticks since this turtle's last virus-check
+]
+
+news-sources-own
+[
+  fake?
 ]
 
 to setup
   clear-all
   setup-nodes
   setup-spatially-clustered-network
-  ask n-of initial-outbreak-size turtles
-    [ become-infected ]
-  ask links [ set color white ]
+  ;ask n-of initial-outbreak-size turtles
+  ;  [ become-infected ]
+  ask links [ set color gray ]
   reset-ticks
 end
 
 to setup-nodes
-  set-default-shape turtles "square"
-  create-turtles number-of-nodes
+  set-default-shape users "person"
+  create-users number-of-nodes
   [
     ; for visual reasons, we don't put any nodes *too* close to the edges
     setxy (random-xcor * 0.95) (random-ycor * 0.95)
     become-susceptible
     set virus-check-timer random virus-check-frequency
   ]
+  set-default-shape news-sources "circle"
+  create-news-sources number-real-news-sources
+  [
+    ; for visual reasons, we don't put any nodes *too* close to the edges
+    setxy (random-xcor * 0.65) (random-ycor * 0.65)
+    set color blue
+    set size 1
+    set fake? false
+  ]
+  create-news-sources number-fake-news-sources
+  [
+    ; for visual reasons, we don't put any nodes *too* close to the edges
+    setxy (random-xcor * 0.65) (random-ycor * 0.65)
+    set color red
+    set size 1
+    set fake? true
+  ]
 end
 
 to setup-spatially-clustered-network
-  let num-links (average-node-degree * number-of-nodes) / 2
-  while [count links < num-links ]
+  let num-sources-link (average-news-sources-user-follows * number-of-nodes)
+  let num-links ((average-node-degree * number-of-nodes) / 2) - num-sources-link
+   while [count links < num-sources-link ]
   [
-    ask one-of turtles
+    ask one-of news-sources
     [
-      let choice (min-one-of (other turtles with [not link-neighbor? myself])
+      let choice (min-one-of (other users with [not link-neighbor? myself])
+                   [distance myself])
+      if choice != nobody [ create-link-with choice ]
+    ]
+  ]
+ while [count links < num-links ]
+  [
+    ask one-of users
+    [
+      let choice (min-one-of (other users with [not link-neighbor? myself])
                    [distance myself])
       if choice != nobody [ create-link-with choice ]
     ]
@@ -42,12 +78,13 @@ to setup-spatially-clustered-network
   [
     layout-spring turtles links 0.3 (world-width / (sqrt number-of-nodes)) 1
   ]
+  ask links [ set color gray - 2 ]
 end
 
 to go
-  if all? turtles [not infected?]
-    [ stop ]
-  ask turtles
+;  if all? users [not infected? or not susceptible?]
+;    [ stop ]
+  ask users
   [
      set virus-check-timer virus-check-timer + 1
      if virus-check-timer >= virus-check-frequency
@@ -59,15 +96,17 @@ to go
 end
 
 to become-infected  ;; turtle procedure
+  set susceptible? false
   set infected? true
   set resistant? false
   set color red
 end
 
 to become-susceptible  ;; turtle procedure
+  set susceptible? true
   set infected? false
   set resistant? false
-  set color blue
+  set color white - 2
 end
 
 to become-resistant  ;; turtle procedure
@@ -78,14 +117,19 @@ to become-resistant  ;; turtle procedure
 end
 
 to spread-virus
-  ask turtles with [infected?]
-    [ ask link-neighbors with [not resistant?]
-        [ if random-float 100 < virus-spread-chance
-            [ become-infected ] ] ]
+  ;ask users with [infected?]
+  ;  [ ask link-neighbors with [not resistant?]
+  ;      [ if random-float 100 < virus-spread-chance
+  ;          [ become-infected ] ] ]
+  ask users with [susceptible?]
+  [
+    if any? link-neighbors with [ breed = news-sources and fake? ]
+    [become-infected]
+  ]
 end
 
 to do-virus-checks
-  ask turtles with [infected? and virus-check-timer = 0]
+  ask users with [infected? and virus-check-timer = 0]
   [
     if random 100 < recovery-chance
     [
@@ -101,13 +145,13 @@ end
 ; See Info tab for full copyright and license.
 @#$#@#$#@
 GRAPHICS-WINDOW
-463
-8
-1037
-582
+704
+22
+1562
+881
 -1
 -1
-17.98
+20.732
 1
 10
 1
@@ -234,8 +278,8 @@ SLIDER
 number-of-nodes
 number-of-nodes
 10
-300
-150.0
+1000
+350.0
 5
 1
 NIL
@@ -280,7 +324,52 @@ average-node-degree
 average-node-degree
 1
 number-of-nodes - 1
-6.0
+8.0
+1
+1
+NIL
+HORIZONTAL
+
+SLIDER
+238
+15
+423
+48
+number-real-news-sources
+number-real-news-sources
+0
+12
+1.0
+1
+1
+NIL
+HORIZONTAL
+
+SLIDER
+237
+53
+423
+86
+number-fake-news-sources
+number-fake-news-sources
+0
+10
+1.0
+1
+1
+NIL
+HORIZONTAL
+
+SLIDER
+247
+133
+478
+166
+average-news-sources-user-follows
+average-news-sources-user-follows
+0
+10
+1.0
 1
 1
 NIL
