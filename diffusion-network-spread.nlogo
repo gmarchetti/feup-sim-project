@@ -6,7 +6,7 @@ users-own
   susceptible?
   infected?           ;; if true, the turtle is infectious
   resistant?          ;; if true, the turtle can't be infected
-  virus-check-timer   ;; number of ticks since this turtle's last virus-check
+  news-check-timer   ;; number of ticks since this turtle's last news-check
 ]
 
 news-sources-own
@@ -18,9 +18,7 @@ to setup
   clear-all
   setup-nodes
   setup-spatially-clustered-network
-  ;ask n-of initial-outbreak-size turtles
-  ;  [ become-infected ]
-  ask links [ set color gray ]
+  ask links [ set color gray - 3 ]
   reset-ticks
 end
 
@@ -31,7 +29,7 @@ to setup-nodes
     ; for visual reasons, we don't put any nodes *too* close to the edges
     setxy (random-xcor * 0.95) (random-ycor * 0.95)
     become-susceptible
-    set virus-check-timer random virus-check-frequency
+    set news-check-timer random news-check-frequency
   ]
   set-default-shape news-sources "circle"
   create-news-sources number-real-news-sources
@@ -86,12 +84,12 @@ to go
 ;    [ stop ]
   ask users
   [
-     set virus-check-timer virus-check-timer + 1
-     if virus-check-timer >= virus-check-frequency
-       [ set virus-check-timer 0 ]
+     set news-check-timer news-check-timer + 1
+     if news-check-timer >= news-check-frequency
+       [ set news-check-timer 0 ]
   ]
-  spread-virus
-  do-virus-checks
+  spread-news
+  do-news-checks
   tick
 end
 
@@ -100,46 +98,84 @@ to become-infected  ;; turtle procedure
   set infected? true
   set resistant? false
   set color red
+   ask my-links [ set color red - 2 ]
 end
 
 to become-susceptible  ;; turtle procedure
   set susceptible? true
   set infected? false
   set resistant? false
-  set color white - 2
+  set color gray + 2
 end
 
 to become-resistant  ;; turtle procedure
+  set susceptible? false
   set infected? false
   set resistant? true
-  set color gray
-  ask my-links [ set color gray - 2 ]
+  set color blue
+  ask my-links [ set color blue - 2 ]
 end
 
-to spread-virus
-  ;ask users with [infected?]
-  ;  [ ask link-neighbors with [not resistant?]
-  ;      [ if random-float 100 < virus-spread-chance
-  ;          [ become-infected ] ] ]
+to user-spread-news
+  ask users with [infected?]
+  [
+    let infected-neighbors-count count infected-neighbors
+    let resistant-neighbors-count count resistant-neighbors
+
+    let infection-rate-adjustment ifelse-value
+    infected-neighbors-count > 0 [ neighbor-impact-rate * infected-neighbors-count / (infected-neighbors-count + resistant-neighbors-count)]
+    [0]
+
+    ask link-neighbors with [ breed = users and susceptible?]
+        [ if random-float 100 < (news-spread-chance * infection-rate-adjustment)
+            [ become-infected ] ]
+  ]
+
+  ask users with [resistant?]
+  [
+    let infected-neighbors-count count infected-neighbors
+    let resistant-neighbors-count count resistant-neighbors
+
+    let resistance-rate-adjustment ifelse-value
+    resistant-neighbors-count > 0 [ neighbor-impact-rate * resistant-neighbors-count / (infected-neighbors-count + resistant-neighbors-count)]
+    [0]
+
+    ask link-neighbors with [ breed = users and susceptible?]
+        [ if random-float 100 < (news-spread-chance * resistance-rate-adjustment)
+            [ become-resistant ] ]
+  ]
+end
+
+to spread-news
+  user-spread-news
   ask users with [susceptible?]
   [
+    ;fake news source spreads
     if any? link-neighbors with [ breed = news-sources and fake? ]
-    [become-infected]
+    [ if random-float 100 < fake-news-persuaviness
+      [become-infected] ]
+    ;legit news source spreads
+    if any? link-neighbors with [breed = news-sources and not fake?]
+    [ if random-float 100 < legit-news-persuaviness
+      [become-resistant] ]
   ]
 end
 
-to do-virus-checks
-  ask users with [infected? and virus-check-timer = 0]
+to do-news-checks
+  ask users with [not susceptible? and news-check-timer = 0]
   [
-    if random 100 < recovery-chance
-    [
-      ifelse random 100 < gain-resistance-chance
-        [ become-resistant ]
+    if random 100 < forgetting-chance
         [ become-susceptible ]
-    ]
   ]
 end
 
+to-report infected-neighbors
+  report link-neighbors with [ breed = users and infected?]
+end
+
+to-report resistant-neighbors
+  report link-neighbors with [ breed = users and resistant?]
+end
 
 ; Copyright 2008 Uri Wilensky.
 ; See Info tab for full copyright and license.
@@ -191,8 +227,8 @@ SLIDER
 245
 230
 278
-recovery-chance
-recovery-chance
+forgetting-chance
+forgetting-chance
 0.0
 10.0
 5.0
@@ -206,8 +242,8 @@ SLIDER
 175
 230
 208
-virus-spread-chance
-virus-spread-chance
+news-spread-chance
+news-spread-chance
 0.0
 10.0
 2.5
@@ -266,9 +302,9 @@ true
 true
 "" ""
 PENS
-"susceptible" 1.0 0 -13345367 true "" "plot (count turtles with [not infected? and not resistant?]) / (count turtles) * 100"
-"infected" 1.0 0 -2674135 true "" "plot (count turtles with [infected?]) / (count turtles) * 100"
-"resistant" 1.0 0 -7500403 true "" "plot (count turtles with [resistant?]) / (count turtles) * 100"
+"susceptible" 1.0 0 -7500403 true "" "plot (count users with [not infected? and not resistant?]) / (count turtles) * 100"
+"infected" 1.0 0 -2674135 true "" "plot (count users with [infected?]) / (count users) * 100"
+"resistant" 1.0 0 -13345367 true "" "plot (count users with [resistant?]) / (count turtles) * 100"
 
 SLIDER
 25
@@ -279,7 +315,7 @@ number-of-nodes
 number-of-nodes
 10
 1000
-350.0
+485.0
 5
 1
 NIL
@@ -290,29 +326,14 @@ SLIDER
 210
 230
 243
-virus-check-frequency
-virus-check-frequency
+news-check-frequency
+news-check-frequency
 1
 20
 1.0
 1
 1
 ticks
-HORIZONTAL
-
-SLIDER
-25
-85
-230
-118
-initial-outbreak-size
-initial-outbreak-size
-1
-number-of-nodes
-1.0
-1
-1
-NIL
 HORIZONTAL
 
 SLIDER
@@ -339,7 +360,7 @@ number-real-news-sources
 number-real-news-sources
 0
 12
-1.0
+2.0
 1
 1
 NIL
@@ -354,7 +375,7 @@ number-fake-news-sources
 number-fake-news-sources
 0
 10
-1.0
+2.0
 1
 1
 NIL
@@ -371,6 +392,51 @@ average-news-sources-user-follows
 10
 1.0
 1
+1
+NIL
+HORIZONTAL
+
+SLIDER
+248
+183
+448
+216
+fake-news-persuaviness
+fake-news-persuaviness
+0
+100
+20.0
+0.5
+1
+%
+HORIZONTAL
+
+SLIDER
+253
+235
+453
+268
+legit-news-persuaviness
+legit-news-persuaviness
+0
+100
+30.5
+0.5
+1
+%
+HORIZONTAL
+
+SLIDER
+260
+285
+432
+318
+neighbor-impact-rate
+neighbor-impact-rate
+0
+10
+1.0
+0.5
 1
 NIL
 HORIZONTAL
