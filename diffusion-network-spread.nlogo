@@ -1,11 +1,19 @@
 breed [users user]
 breed [news-sources news-source]
 
+globals [
+  max-number-infected
+  max-number-resistant
+  distances-from-source
+  run-count
+]
+
 users-own
 [
   susceptible?
   infected?           ;; if true, the turtle is infectious
   resistant?          ;; if true, the turtle can't be infected
+  distance-from-source
   news-check-timer    ;; number of ticks since this turtle's last news-check
 ]
 
@@ -14,10 +22,26 @@ news-sources-own
   fake?
   active?
   active-timer
+  distance-from-source
 ]
 
 to setup
   clear-all
+  setup-nodes
+  setup-spatially-clustered-network
+  ask links [ set color gray - 3 ]
+  reset-ticks
+  set distances-from-source (list)
+  set run-count 0
+end
+
+to soft-reset
+  clear-ticks
+  clear-turtles
+  clear-patches
+  clear-drawing
+  clear-all-plots
+  clear-output
   setup-nodes
   setup-spatially-clustered-network
   ask links [ set color gray - 3 ]
@@ -32,6 +56,7 @@ to setup-nodes
     setxy (random-xcor * 0.95) (random-ycor * 0.95)
     become-susceptible
     set news-check-timer random news-check-frequency
+    set distance-from-source 0
   ]
   set-default-shape news-sources "circle"
   create-news-sources number-real-news-sources
@@ -43,6 +68,7 @@ to setup-nodes
     set fake? false
     set active? true
     set active-timer 0
+    set distance-from-source 0
   ]
   create-news-sources number-fake-news-sources
   [
@@ -53,6 +79,7 @@ to setup-nodes
     set fake? true
     set active? true
     set active-timer 0
+    set distance-from-source 0
   ]
 end
 
@@ -87,7 +114,12 @@ end
 
 to go
   if all? users [susceptible?] and all? news-sources [not active?]
-    [ stop ]
+  [
+    set distances-from-source lput (max [distance-from-source] of users) distances-from-source
+    set run-count run-count + 1
+    ifelse run-count = num-of-runs [stop] [soft-reset]
+  ]
+
   ask users
   [
      set news-check-timer news-check-timer + 1
@@ -109,12 +141,13 @@ to go
   tick
 end
 
-to become-infected  ;; turtle procedure
+to become-infected [source];; turtle procedure
   set susceptible? false
   set infected? true
   set resistant? false
   set color red
-   ask my-links [ set color red - 2 ]
+  ask my-links [ set color red - 2 ]
+  set distance-from-source ([distance-from-source] of source) + 1
 end
 
 to become-susceptible  ;; turtle procedure
@@ -124,15 +157,17 @@ to become-susceptible  ;; turtle procedure
   set color gray + 2
 end
 
-to become-resistant  ;; turtle procedure
+to become-resistant [source] ;; turtle procedure
   set susceptible? false
   set infected? false
   set resistant? true
   set color blue
   ask my-links [ set color blue - 2 ]
+  set distance-from-source ([distance-from-source] of source) + 1
 end
 
 to user-spread-news
+; User spread fake news
   ask users with [infected?]
   [
     let infected-neighbors-count count infected-neighbors
@@ -144,9 +179,10 @@ to user-spread-news
 
     ask link-neighbors with [ breed = users and susceptible?]
         [ if random-float 100 < (news-spread-chance * (1 + infection-rate-adjustment))
-            [ become-infected ] ]
+            [ become-infected self ] ]
   ]
 
+; User spread legit news
   ask users with [resistant?]
   [
     let infected-neighbors-count count infected-neighbors
@@ -158,8 +194,10 @@ to user-spread-news
 
     ask link-neighbors with [ breed = users and susceptible?]
     [
-    if random-float 100 < (news-spread-chance * (1 + resistance-rate-adjustment))
-      [ become-resistant ]
+      if random-float 100 < (news-spread-chance * (1 + resistance-rate-adjustment))
+      [
+        become-resistant myself
+      ]
     ]
   ]
 end
@@ -171,11 +209,12 @@ to spread-news
     ;fake news source spreads
     if any? link-neighbors with [ breed = news-sources and fake? and active?]
     [ if random-float 100 < fake-news-persuaviness
-      [become-infected] ]
+      [become-infected self]]
     ;legit news source spreads
     if any? link-neighbors with [breed = news-sources and not fake? and active?]
     [ if random-float 100 < legit-news-persuaviness
-      [become-resistant] ]
+      [ become-resistant self ]
+    ]
   ]
 end
 
@@ -196,13 +235,13 @@ to-report resistant-neighbors
 end
 @#$#@#$#@
 GRAPHICS-WINDOW
-704
-22
-1562
-881
+541
+10
+1176
+646
 -1
 -1
-20.732
+15.3
 1
 10
 1
@@ -261,7 +300,7 @@ news-spread-chance
 news-spread-chance
 0.0
 1.0
-0.15
+0.1
 0.025
 1
 %
@@ -302,10 +341,10 @@ NIL
 0
 
 PLOT
-5
-325
+1206
+14
+1609
 260
-489
 Network Status
 time
 % of nodes
@@ -390,17 +429,17 @@ number-fake-news-sources
 number-fake-news-sources
 0
 10
-0.0
+1.0
 1
 1
 NIL
 HORIZONTAL
 
 SLIDER
-247
-133
-488
-166
+242
+176
+418
+210
 average-news-sources-user-follows
 average-news-sources-user-follows
 0
@@ -412,10 +451,10 @@ NIL
 HORIZONTAL
 
 SLIDER
-248
-183
-448
-216
+243
+210
+417
+244
 fake-news-persuaviness
 fake-news-persuaviness
 0
@@ -427,45 +466,71 @@ fake-news-persuaviness
 HORIZONTAL
 
 SLIDER
-253
-235
-453
-268
+243
+244
+417
+278
 legit-news-persuaviness
 legit-news-persuaviness
 0
 100
-30.5
+30.0
 0.5
 1
 %
 HORIZONTAL
 
 SLIDER
-260
-285
-432
-318
+244
+280
+416
+313
 neighbor-impact-rate
 neighbor-impact-rate
 0
 10
-0.0
+0.5
 0.5
 1
 NIL
 HORIZONTAL
 
 SLIDER
-299
-349
-499
-382
+243
+320
+416
+354
 num-ticks-news-source-active
 num-ticks-news-source-active
 1
 30
 2.0
+1
+1
+NIL
+HORIZONTAL
+
+MONITOR
+1207
+280
+1283
+326
+Max Depth
+mean distances-from-source
+4
+1
+11
+
+SLIDER
+22
+331
+195
+365
+num-of-runs
+num-of-runs
+1
+50
+4.0
 1
 1
 NIL
