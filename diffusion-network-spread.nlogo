@@ -6,12 +6,14 @@ users-own
   susceptible?
   infected?           ;; if true, the turtle is infectious
   resistant?          ;; if true, the turtle can't be infected
-  news-check-timer   ;; number of ticks since this turtle's last news-check
+  news-check-timer    ;; number of ticks since this turtle's last news-check
 ]
 
 news-sources-own
 [
   fake?
+  active?
+  active-timer
 ]
 
 to setup
@@ -39,6 +41,8 @@ to setup-nodes
     set color blue
     set size 1
     set fake? false
+    set active? true
+    set active-timer 0
   ]
   create-news-sources number-fake-news-sources
   [
@@ -47,6 +51,8 @@ to setup-nodes
     set color red
     set size 1
     set fake? true
+    set active? true
+    set active-timer 0
   ]
 end
 
@@ -80,13 +86,23 @@ to setup-spatially-clustered-network
 end
 
 to go
-;  if all? users [not infected? or not susceptible?]
-;    [ stop ]
+  if all? users [susceptible?] and all? news-sources [not active?]
+    [ stop ]
   ask users
   [
      set news-check-timer news-check-timer + 1
      if news-check-timer >= news-check-frequency
        [ set news-check-timer 0 ]
+  ]
+
+  ask news-sources with [active?]
+  [
+    set active-timer active-timer + 1
+    if active-timer > num-ticks-news-source-active
+    [
+      set active? false
+      set color gray
+    ]
   ]
   spread-news
   do-news-checks
@@ -127,7 +143,7 @@ to user-spread-news
     [0]
 
     ask link-neighbors with [ breed = users and susceptible?]
-        [ if random-float 100 < (news-spread-chance * infection-rate-adjustment)
+        [ if random-float 100 < (news-spread-chance * (1 + infection-rate-adjustment))
             [ become-infected ] ]
   ]
 
@@ -141,8 +157,10 @@ to user-spread-news
     [0]
 
     ask link-neighbors with [ breed = users and susceptible?]
-        [ if random-float 100 < (news-spread-chance * resistance-rate-adjustment)
-            [ become-resistant ] ]
+    [
+    if random-float 100 < (news-spread-chance * (1 + resistance-rate-adjustment))
+      [ become-resistant ]
+    ]
   ]
 end
 
@@ -151,11 +169,11 @@ to spread-news
   ask users with [susceptible?]
   [
     ;fake news source spreads
-    if any? link-neighbors with [ breed = news-sources and fake? ]
+    if any? link-neighbors with [ breed = news-sources and fake? and active?]
     [ if random-float 100 < fake-news-persuaviness
       [become-infected] ]
     ;legit news source spreads
-    if any? link-neighbors with [breed = news-sources and not fake?]
+    if any? link-neighbors with [breed = news-sources and not fake? and active?]
     [ if random-float 100 < legit-news-persuaviness
       [become-resistant] ]
   ]
@@ -176,9 +194,6 @@ end
 to-report resistant-neighbors
   report link-neighbors with [ breed = users and resistant?]
 end
-
-; Copyright 2008 Uri Wilensky.
-; See Info tab for full copyright and license.
 @#$#@#$#@
 GRAPHICS-WINDOW
 704
@@ -231,7 +246,7 @@ forgetting-chance
 forgetting-chance
 0.0
 10.0
-5.0
+7.5
 0.1
 1
 %
@@ -245,9 +260,9 @@ SLIDER
 news-spread-chance
 news-spread-chance
 0.0
-10.0
-2.5
-0.1
+1.0
+0.15
+0.025
 1
 %
 HORIZONTAL
@@ -315,7 +330,7 @@ number-of-nodes
 number-of-nodes
 10
 1000
-485.0
+155.0
 5
 1
 NIL
@@ -345,7 +360,7 @@ average-node-degree
 average-node-degree
 1
 number-of-nodes - 1
-8.0
+21.0
 1
 1
 NIL
@@ -360,7 +375,7 @@ number-real-news-sources
 number-real-news-sources
 0
 12
-2.0
+1.0
 1
 1
 NIL
@@ -375,7 +390,7 @@ number-fake-news-sources
 number-fake-news-sources
 0
 10
-2.0
+0.0
 1
 1
 NIL
@@ -384,14 +399,14 @@ HORIZONTAL
 SLIDER
 247
 133
-478
+488
 166
 average-news-sources-user-follows
 average-news-sources-user-follows
 0
-10
-1.0
-1
+5
+0.25
+0.25
 1
 NIL
 HORIZONTAL
@@ -435,8 +450,23 @@ neighbor-impact-rate
 neighbor-impact-rate
 0
 10
-1.0
+0.0
 0.5
+1
+NIL
+HORIZONTAL
+
+SLIDER
+299
+349
+499
+382
+num-ticks-news-source-active
+num-ticks-news-source-active
+1
+30
+2.0
+1
 1
 NIL
 HORIZONTAL
