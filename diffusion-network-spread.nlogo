@@ -50,14 +50,7 @@ end
 
 to setup-nodes
   set-default-shape users "person"
-  create-users number-of-nodes
-  [
-    ; for visual reasons, we don't put any nodes *too* close to the edges
-    setxy (random-xcor * 0.95) (random-ycor * 0.95)
-    become-susceptible
-    set news-check-timer random news-check-frequency
-    set distance-from-source 0
-  ]
+
   set-default-shape news-sources "circle"
   create-news-sources number-real-news-sources
   [
@@ -83,31 +76,50 @@ to setup-nodes
   ]
 end
 
-to setup-spatially-clustered-network
-  let num-sources-link (average-news-sources-user-follows * number-of-nodes)
-  let num-links ((average-node-degree * number-of-nodes) / 2) - num-sources-link
-   while [count links < num-sources-link ]
+to add-user
+  create-users 1
   [
+    ; for visual reasons, we don't put any nodes *too* close to the edges
+    setxy (random-xcor * 0.95) (random-ycor * 0.95)
+    become-susceptible
+    set news-check-timer random news-check-frequency
+    set distance-from-source 0
+  ]
+end
+
+to setup-spatially-clustered-network
+  while [count links < news-sources-initial-connection]
+  [
+    add-user
     ask one-of news-sources
     [
-      let choice (min-one-of (other users with [not link-neighbor? myself])
-                   [distance myself])
-      if choice != nobody [ create-link-with choice ]
+      create-link-with one-of users with [link-neighbors != myself]
     ]
   ]
- while [count links < num-links ]
+
+  while [count users < number-of-nodes]
   [
-    ask one-of users
+    let total-nodes (count users + count news-sources)
+    let links-per-node floor(avg-network-degree * ((1 + network-growth-rate) ^ (count users / 5)))
+    let links-to-create min (list total-nodes links-per-node)
+    add-user
+    let created-links 0
+    while [created-links < links-to-create]
     [
-      let choice (min-one-of (other users with [not link-neighbor? myself])
-                   [distance myself])
-      if choice != nobody [ create-link-with choice ]
+      ask one-of users[
+        let partner find-partner
+        if partner != nobody and partner != self
+        [
+          set created-links created-links + 1
+          create-link-with partner
+        ]
+      ]
     ]
   ]
   ; make the network look a little prettier
   repeat 10
   [
-    layout-spring turtles links 0.3 (world-width / (sqrt number-of-nodes)) 1
+    layout-spring turtles links 0.01 (world-width / (sqrt number-of-nodes)) 1
   ]
   ask links [ set color gray - 2 ]
 end
@@ -117,7 +129,7 @@ to go
   [
     set distances-from-source lput (max [distance-from-source] of users) distances-from-source
     set run-count run-count + 1
-    ifelse run-count = num-of-runs [stop] [soft-reset]
+    ifelse run-count >= num-of-runs [stop] [soft-reset]
   ]
 
   ask users
@@ -233,15 +245,19 @@ end
 to-report resistant-neighbors
   report link-neighbors with [ breed = users and resistant?]
 end
+
+to-report find-partner
+  report [one-of both-ends] of one-of links
+end
 @#$#@#$#@
 GRAPHICS-WINDOW
-541
+449
 10
-1176
-646
+1310
+872
 -1
 -1
-15.3
+20.805
 1
 10
 1
@@ -285,7 +301,7 @@ forgetting-chance
 forgetting-chance
 0.0
 10.0
-7.5
+10.0
 0.1
 1
 %
@@ -369,7 +385,7 @@ number-of-nodes
 number-of-nodes
 10
 1000
-155.0
+245.0
 5
 1
 NIL
@@ -395,11 +411,11 @@ SLIDER
 50
 230
 83
-average-node-degree
-average-node-degree
+avg-network-degree
+avg-network-degree
 1
-number-of-nodes - 1
-21.0
+12
+3.0
 1
 1
 NIL
@@ -429,7 +445,7 @@ number-fake-news-sources
 number-fake-news-sources
 0
 10
-1.0
+0.0
 1
 1
 NIL
@@ -438,14 +454,14 @@ HORIZONTAL
 SLIDER
 242
 176
-418
-210
-average-news-sources-user-follows
-average-news-sources-user-follows
+450
+209
+news-sources-initial-connection
+news-sources-initial-connection
 0
-5
-0.25
-0.25
+50
+10.0
+1
 1
 NIL
 HORIZONTAL
@@ -454,7 +470,7 @@ SLIDER
 243
 210
 417
-244
+243
 fake-news-persuaviness
 fake-news-persuaviness
 0
@@ -469,7 +485,7 @@ SLIDER
 243
 244
 417
-278
+277
 legit-news-persuaviness
 legit-news-persuaviness
 0
@@ -499,7 +515,7 @@ SLIDER
 243
 320
 416
-354
+353
 num-ticks-news-source-active
 num-ticks-news-source-active
 1
@@ -513,9 +529,9 @@ HORIZONTAL
 MONITOR
 1207
 280
-1283
-326
-Max Depth
+1308
+325
+Avg Max Depth
 mean distances-from-source
 4
 1
@@ -525,13 +541,39 @@ SLIDER
 22
 331
 195
-365
+364
 num-of-runs
 num-of-runs
 1
 50
-4.0
+1.0
 1
+1
+NIL
+HORIZONTAL
+
+MONITOR
+1323
+280
+1421
+325
+SD Max Depth 
+standard-deviation distances-from-source
+17
+1
+11
+
+SLIDER
+24
+87
+196
+120
+network-growth-rate
+network-growth-rate
+0
+1
+0.1
+0.01
 1
 NIL
 HORIZONTAL
