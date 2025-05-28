@@ -1,0 +1,3 @@
+[submodule "FibVID"]
+	path = FibVID
+	url = git@github.com:merry555/FibVID.git
