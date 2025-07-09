@@ -2,15 +2,20 @@ breed [users user]
 breed [news-sources news-source]
 
 globals [
-  max-number-infected
-  max-number-resistant
   distances-from-source
+  counts-of-resistant
+  counts-of-infected
+  counts-of-exposed-fn
+  counts-of-exposed-ln
+  counts-of-exposed-both
   run-count
 ]
 
 users-own
 [
   susceptible?
+  exposed-fn?
+  exposed-ln?
   infected?           ;; if true, the turtle is infectious
   resistant?          ;; if true, the turtle can't be infected
   distance-from-source
@@ -32,6 +37,11 @@ to setup
   ask links [ set color gray - 3 ]
   reset-ticks
   set distances-from-source (list)
+  set counts-of-resistant (list)
+  set counts-of-infected (list)
+  set counts-of-exposed-fn (list)
+  set counts-of-exposed-ln (list)
+  set counts-of-exposed-both (list)
   set run-count 0
 end
 
@@ -100,8 +110,7 @@ to setup-spatially-clustered-network
   while [count users < number-of-nodes]
   [
     let total-nodes (count users + count news-sources)
-    let links-per-node floor(avg-network-degree * ((1 + network-growth-rate) ^ (count users / 5)))
-    let links-to-create min (list total-nodes links-per-node)
+    let links-to-create min (list total-nodes avg-network-degree)
     add-user
     let created-links 0
     while [created-links < links-to-create]
@@ -125,9 +134,14 @@ to setup-spatially-clustered-network
 end
 
 to go
-  if all? users [susceptible?] and all? news-sources [not active?]
+  if ticks = days-per-run
   [
     set distances-from-source lput (max [distance-from-source] of users) distances-from-source
+    set counts-of-resistant lput (count users with [ resistant? ]) counts-of-resistant
+    set counts-of-infected lput (count users with [ infected? ]) counts-of-infected
+    set counts-of-exposed-fn lput (count users with [ exposed-fn? ]) counts-of-exposed-fn
+    set counts-of-exposed-ln lput (count users with [ exposed-ln? ]) counts-of-exposed-ln
+    set counts-of-exposed-both lput (count users with [ exposed-ln? and exposed-fn? ]) counts-of-exposed-both
     set run-count run-count + 1
     ifelse run-count >= num-of-runs [stop] [soft-reset]
   ]
@@ -149,12 +163,12 @@ to go
     ]
   ]
   spread-news
-  do-news-checks
   tick
 end
 
 to become-infected [source];; turtle procedure
   set susceptible? false
+  set exposed-fn? true
   set infected? true
   set resistant? false
   set color red
@@ -164,6 +178,8 @@ end
 
 to become-susceptible  ;; turtle procedure
   set susceptible? true
+  set exposed-fn? false
+  set exposed-ln? false
   set infected? false
   set resistant? false
   set color gray + 2
@@ -171,11 +187,22 @@ end
 
 to become-resistant [source] ;; turtle procedure
   set susceptible? false
+  set exposed-ln? true
   set infected? false
   set resistant? true
   set color blue
   ask my-links [ set color blue - 2 ]
   set distance-from-source ([distance-from-source] of source) + 1
+end
+
+to become-exposed-fn
+  set exposed-fn? true
+  set color red + 4
+end
+
+to become-exposed-ln
+  set exposed-ln? true
+  set color blue + 4
 end
 
 to user-spread-news
@@ -190,8 +217,10 @@ to user-spread-news
     [0]
 
     ask link-neighbors with [ breed = users and susceptible?]
-        [ if random-float 100 < (news-spread-chance * (1 + infection-rate-adjustment))
-            [ become-infected self ] ]
+    [ ifelse random-float 100 < ( (fn-spreading-bonus + news-spread-chance) * (1 + infection-rate-adjustment))
+      [ become-infected myself ]
+      [ become-exposed-fn ]
+    ]
   ]
 
 ; User spread legit news
@@ -206,10 +235,9 @@ to user-spread-news
 
     ask link-neighbors with [ breed = users and susceptible?]
     [
-      if random-float 100 < (news-spread-chance * (1 + resistance-rate-adjustment))
-      [
-        become-resistant myself
-      ]
+      ifelse random-float 100 < (news-spread-chance * (1 + resistance-rate-adjustment))
+      [ become-resistant myself ]
+      [ become-exposed-ln ]
     ]
   ]
 end
@@ -220,21 +248,15 @@ to spread-news
   [
     ;fake news source spreads
     if any? link-neighbors with [ breed = news-sources and fake? and active?]
-    [ if random-float 100 < fake-news-persuaviness
-      [become-infected self]]
+    [ ifelse random-float 100 < fake-news-persuasiveness
+      [become-infected self]
+      [ become-exposed-fn ]
+    ]
     ;legit news source spreads
     if any? link-neighbors with [breed = news-sources and not fake? and active?]
-    [ if random-float 100 < legit-news-persuaviness
+    [ if random-float 100 < legit-news-persuasiveness
       [ become-resistant self ]
     ]
-  ]
-end
-
-to do-news-checks
-  ask users with [not susceptible? and news-check-timer = 0]
-  [
-    if random 100 < forgetting-chance
-        [ become-susceptible ]
   ]
 end
 
@@ -278,55 +300,40 @@ ticks
 30.0
 
 SLIDER
-25
-280
-230
-313
-gain-resistance-chance
-gain-resistance-chance
+26
+169
+229
+202
+fn-spreading-bonus
+fn-spreading-bonus
+-0.1
+0.1
 0.0
-100
-5.0
-1
+0.01
 1
 %
 HORIZONTAL
 
 SLIDER
 25
-245
+93
 230
-278
-forgetting-chance
-forgetting-chance
-0.0
-10.0
-10.0
-0.1
-1
-%
-HORIZONTAL
-
-SLIDER
-25
-175
-230
-208
+126
 news-spread-chance
 news-spread-chance
 0.0
-1.0
 0.1
-0.025
+0.03
+0.005
 1
 %
 HORIZONTAL
 
 BUTTON
-25
-125
-120
-165
+217
+441
+312
+481
 NIL
 setup
 NIL
@@ -340,10 +347,10 @@ NIL
 1
 
 BUTTON
-135
-125
-230
-165
+324
+442
+419
+482
 NIL
 go
 T
@@ -357,24 +364,23 @@ NIL
 0
 
 PLOT
-1206
-14
-1609
-260
+1351
+10
+1754
+256
 Network Status
 time
-% of nodes
+Number of Nodes
 0.0
-52.0
+15.0
 0.0
-100.0
+40.0
 true
 true
 "" ""
 PENS
-"susceptible" 1.0 0 -7500403 true "" "plot (count users with [not infected? and not resistant?]) / (count turtles) * 100"
-"infected" 1.0 0 -2674135 true "" "plot (count users with [infected?]) / (count users) * 100"
-"resistant" 1.0 0 -13345367 true "" "plot (count users with [resistant?]) / (count turtles) * 100"
+"infected" 1.0 0 -2674135 true "" "plot (count users with [infected?]) "
+"resistant" 1.0 0 -13345367 true "" "plot (count users with [resistant?])"
 
 SLIDER
 25
@@ -383,19 +389,19 @@ SLIDER
 48
 number-of-nodes
 number-of-nodes
-10
-1000
-245.0
-5
+100
+3000
+2000.0
+100
 1
 NIL
 HORIZONTAL
 
 SLIDER
 25
-210
+128
 230
-243
+161
 news-check-frequency
 news-check-frequency
 1
@@ -415,7 +421,7 @@ avg-network-degree
 avg-network-degree
 1
 12
-3.0
+6.0
 1
 1
 NIL
@@ -429,8 +435,8 @@ SLIDER
 number-real-news-sources
 number-real-news-sources
 0
-12
-1.0
+10
+3.0
 1
 1
 NIL
@@ -445,77 +451,77 @@ number-fake-news-sources
 number-fake-news-sources
 0
 10
-0.0
+3.0
 1
 1
 NIL
 HORIZONTAL
 
 SLIDER
-242
-176
-450
-209
+238
+94
+414
+127
 news-sources-initial-connection
 news-sources-initial-connection
 0
 50
-10.0
+5.0
 1
 1
 NIL
 HORIZONTAL
 
 SLIDER
-243
-210
-417
-243
-fake-news-persuaviness
-fake-news-persuaviness
+238
+129
+413
+162
+fake-news-persuasiveness
+fake-news-persuasiveness
 0
-100
-20.0
-0.5
+20
+4.65
+0.05
 1
 %
 HORIZONTAL
 
 SLIDER
-243
-244
-417
-277
-legit-news-persuaviness
-legit-news-persuaviness
+238
+166
+413
+199
+legit-news-persuasiveness
+legit-news-persuasiveness
 0
-100
-30.0
-0.5
+20
+3.25
+0.05
 1
 %
 HORIZONTAL
 
 SLIDER
-244
-280
-416
-313
+238
+203
+414
+236
 neighbor-impact-rate
 neighbor-impact-rate
 0
-10
-0.5
-0.5
+1
+0.35
+0.01
 1
 NIL
 HORIZONTAL
 
 SLIDER
-243
-320
-416
-353
+238
+239
+413
+272
 num-ticks-news-source-active
 num-ticks-news-source-active
 1
@@ -527,56 +533,221 @@ NIL
 HORIZONTAL
 
 MONITOR
-1207
-280
-1308
-325
+1352
+278
+1477
+335
 Avg Max Depth
 mean distances-from-source
 4
 1
-11
+14
 
 SLIDER
 22
-331
+417
 195
-364
+450
 num-of-runs
 num-of-runs
 1
-50
-1.0
+200
+50.0
 1
 1
 NIL
 HORIZONTAL
 
 MONITOR
-1323
-280
-1421
-325
+1576
+279
+1699
+336
 SD Max Depth 
 standard-deviation distances-from-source
 17
 1
-11
+14
 
 SLIDER
-24
-87
-196
-120
-network-growth-rate
-network-growth-rate
-0
+23
+379
+195
+412
+days-per-run
+days-per-run
+5
+30
+20.0
 1
-0.1
-0.01
 1
 NIL
 HORIZONTAL
+
+MONITOR
+1350
+466
+1512
+523
+Avg Resistant Agents
+mean counts-of-resistant
+2
+1
+14
+
+MONITOR
+1350
+529
+1506
+586
+Avg Infected Agents
+mean counts-of-infected
+2
+1
+14
+
+MONITOR
+1352
+339
+1516
+396
+Avg Tweets per User
+(mean counts-of-resistant) / number-of-nodes
+17
+1
+14
+
+MONITOR
+1577
+340
+1734
+397
+SD Tweets per User
+(standard-deviation counts-of-resistant) / number-of-nodes
+17
+1
+14
+
+MONITOR
+1351
+401
+1554
+458
+Avg Fake Tweets per User
+(mean counts-of-infected) / number-of-nodes
+17
+1
+14
+
+MONITOR
+1577
+403
+1772
+460
+SD Fake Tweets per User
+(standard-deviation counts-of-infected) / number-of-nodes
+17
+1
+14
+
+MONITOR
+1349
+651
+1531
+708
+Avg FN Exposed Agents
+mean counts-of-exposed-fn
+2
+1
+14
+
+MONITOR
+1577
+466
+1732
+523
+SD Resistant Agents
+standard-deviation counts-of-resistant
+2
+1
+14
+
+MONITOR
+1576
+528
+1725
+585
+SD Infected Agents
+standard-deviation counts-of-infected
+2
+1
+14
+
+MONITOR
+1576
+653
+1751
+710
+SD FN Exposed Agents
+standard-deviation counts-of-exposed-fn
+2
+1
+14
+
+MONITOR
+1349
+589
+1531
+646
+Avg LN Exposed Agents
+mean counts-of-exposed-ln
+2
+1
+14
+
+MONITOR
+1576
+590
+1751
+647
+SD LN Exposed Agents
+standard-deviation counts-of-exposed-ln
+2
+1
+14
+
+MONITOR
+1351
+713
+1526
+770
+AVG Both Exposed Agents
+mean counts-of-exposed-both
+2
+1
+14
+
+MONITOR
+1576
+714
+1766
+771
+SD Both Exposed Agents
+standard-deviation counts-of-exposed-both
+2
+1
+14
+
+MONITOR
+216
+379
+349
+436
+Number of Runs 
+run-count
+0
+1
+14
 
 @#$#@#$#@
 ## WHAT IS IT?
